@@ -6,6 +6,7 @@ package driver
 import (
 	"context"
 	"crypto/sha256"
+	selfroute "github.com/ory/kratos/selfmodule/route"
 	"net/http"
 	"strings"
 	"sync"
@@ -99,6 +100,7 @@ type RegistryDefault struct {
 	identityValidator      *identity.Validator
 	identityManager        *identity.Manager
 	identitySchemaProvider schema.IdentitySchemaProvider
+	selfServiceHandler     *selfroute.Handler
 
 	courierHandler *courier.Handler
 
@@ -202,6 +204,7 @@ func (m *RegistryDefault) RegisterAdminRoutes(ctx context.Context, router *x.Rou
 	m.SchemaHandler().RegisterAdminRoutes(router)
 	m.SettingsHandler().RegisterAdminRoutes(router)
 	m.IdentityHandler().RegisterAdminRoutes(router)
+	m.SelfServiceHandler().RegisterAdminRoutes(router)
 	m.CourierHandler().RegisterAdminRoutes(router)
 	m.SelfServiceErrorHandler().RegisterAdminRoutes(router)
 
@@ -452,6 +455,13 @@ func (m *RegistryDefault) IdentityHandler() *identity.Handler {
 		m.identityHandler = identity.NewHandler(m)
 	}
 	return m.identityHandler
+}
+
+func (m *RegistryDefault) SelfServiceHandler() *selfroute.Handler {
+	if m.selfServiceHandler == nil {
+		m.selfServiceHandler = selfroute.NewHandler(m)
+	}
+	return m.selfServiceHandler
 }
 
 func (m *RegistryDefault) CourierHandler() *courier.Handler {

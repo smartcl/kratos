@@ -6,6 +6,7 @@ package identity
 import (
 	"context"
 	"encoding/json"
+	"github.com/ory/kratos/selfmodule/auth_phone"
 	"io"
 	"net/http"
 	"strings"
@@ -404,6 +405,8 @@ type CreateIdentityBody struct {
 	//
 	// required: false
 	State State `json:"state"`
+
+	PhoneCode string `json:"phone_code"`
 }
 
 // Create Identity and Import Credentials
@@ -497,6 +500,19 @@ type AdminCreateIdentityImportCredentialsOidcProvider struct {
 func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var cr CreateIdentityBody
 	if err := jsonx.NewStrictDecoder(r.Body).Decode(&cr); err != nil {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
+		return
+	}
+	traits := make(map[string]string)
+	err := json.Unmarshal(cr.Traits, &traits)
+	if err != nil {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
+		return
+	}
+	phone := traits["phone"]
+	phoneCode := cr.PhoneCode
+	err = auth_phone.AuthPhoneGlobal.VerifyAuthCode(phone, phoneCode)
+	if err != nil {
 		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
 		return
 	}
@@ -735,6 +751,12 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		return
 	}
 
+	idSrc := ps.ByName("id")
+	if idSrc == "resetPwd" {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithReasonf("The identity ID is invalid.")))
+		return
+	}
+	//identity, err := h.r.PrivilegedIdentityPool().GetIdentityConfidential()
 	id := x.ParseUUID(ps.ByName("id"))
 	identity, err := h.r.PrivilegedIdentityPool().GetIdentityConfidential(r.Context(), id)
 	if err != nil {
@@ -758,7 +780,8 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		identity.StateChangedAt = &stateChangedAt
 	}
 
-	identity.Traits = []byte(ur.Traits)
+	// 不让改
+	//identity.Traits = []byte(ur.Traits)
 	identity.MetadataPublic = []byte(ur.MetadataPublic)
 	identity.MetadataAdmin = []byte(ur.MetadataAdmin)
 

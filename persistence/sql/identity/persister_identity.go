@@ -876,6 +876,53 @@ func paginationAttributes(params *identity.ListIdentityParameters, paginator *ke
 	return attrs
 }
 
+func (p *IdentityPersister) ListIdentitiesByUserNameOrAuth(ctx context.Context, pageSize, page, authStatus int, userName string) ([]identity.Identity, int, error) {
+	list := make([]identity.Identity, 0)
+	count := 0
+	if err := p.Transaction(ctx, func(crx context.Context, con *pop.Connection) error {
+		query := ""
+		args := make([]any, 0)
+		queryOnlyArgs := make([]any, 0)
+		if err := crdbx.SetTransactionReadOnly(con); err != nil {
+			return err
+		}
+		if authStatus != 0 {
+			if authStatus == 1 {
+				query += " WHERE identities.metadata_public NOT LIKE '%auth_at%'"
+				args = append(args, "auth_at")
+				queryOnlyArgs = append(queryOnlyArgs, "auth_at")
+			}
+			if authStatus == 2 {
+				if query != "" {
+					query += " AND "
+				}
+				query += " WHERE POSITION('?' IN identities.traits)>0"
+				args = append(args, userName)
+				queryOnlyArgs = append(queryOnlyArgs, userName)
+			}
+		}
+		limit := "ORDER BY identities.updated_at DESC LIMIT ? OFFSET ?"
+		args = append(args, pageSize, pageSize*(page-1))
+
+		sqlStr := fmt.Sprintf(`SELECT * FROM identities %s %s`, query, limit)
+		fmt.Printf("sqlStr: %s\n", sqlStr)
+		if err := con.RawQuery(sqlStr, args...).All(&list); err != nil {
+			return sqlcon.HandleError(err)
+		}
+		queryOnlyStr := fmt.Sprintf(`SELECT * FROM identities %s`, query)
+		fmt.Printf("queryOnlyStr: %s\n", queryOnlyStr)
+		var err error
+		count, err = con.RawQuery(queryOnlyStr, queryOnlyArgs...).Count(&identity.Identity{})
+		if err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, 0, err
+	}
+	return list, count, nil
+}
+
 func (p *IdentityPersister) ListIdentities(ctx context.Context, params identity.ListIdentityParameters) (_ []identity.Identity, nextPage *keysetpagination.Paginator, err error) {
 	paginator := keysetpagination.GetPaginator(append(
 		params.KeySetPagination,
@@ -1196,6 +1243,15 @@ func (p *IdentityPersister) GetIdentityConfidential(ctx context.Context, id uuid
 	return p.GetIdentity(ctx, id, identity.ExpandEverything)
 }
 
+func (p *IdentityPersister) GetIdentityByPhone(ctx context.Context, phone string) (res *identity.Identity, err error) {
+	ctx, span := p.r.Tracer(ctx).Tracer().Start(ctx, "persistence.sql.GetIdentityByPhone")
+	defer otelx.End(span, &err)
+
+	//p.GetConnection(ctx).Where("traits.phone = ? AND nid = ?", id, p.NetworkID(ctx)).First(&i); err != nil {
+	//	return nil, sqlcon.HandleError(err)
+	//}
+	return nil, nil
+}
 func (p *IdentityPersister) FindVerifiableAddressByValue(ctx context.Context, via string, value string) (_ *identity.VerifiableAddress, err error) {
 	ctx, span := p.r.Tracer(ctx).Tracer().Start(ctx, "persistence.sql.FindVerifiableAddressByValue",
 		trace.WithAttributes(

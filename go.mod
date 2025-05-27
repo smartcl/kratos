@@ -99,12 +99,15 @@ require (
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/net v0.27.0
 	golang.org/x/oauth2 v0.21.0
-	golang.org/x/sync v0.8.0
-	golang.org/x/text v0.17.0
+	golang.org/x/sync v0.10.0
+	golang.org/x/text v0.21.0
 	google.golang.org/grpc v1.65.0
 )
 
-require github.com/wI2L/jsondiff v0.6.0
+require (
+	github.com/mojocn/base64Captcha v1.3.5
+	github.com/wI2L/jsondiff v0.6.0
+)
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
@@ -113,8 +116,10 @@ require (
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/cortesi/moddwatch v0.1.0 // indirect
 	github.com/cortesi/termlog v0.0.0-20210222042314-a1eec763abec // indirect
+	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/jackc/pgx/v5 v5.6.0 // indirect
 	github.com/rjeczalik/notify v0.9.3 // indirect
+	golang.org/x/image v0.23.0 // indirect
 	golang.org/x/term v0.23.0 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	mvdan.cc/sh/v3 v3.6.0 // indirect

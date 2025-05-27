@@ -31,6 +31,8 @@ type (
 	Pool interface {
 		// ListIdentities lists all identities in the store given the page and itemsPerPage.
 		ListIdentities(ctx context.Context, params ListIdentityParameters) ([]Identity, *keysetpagination.Paginator, error)
+		// ListIdentitiesByUserNameOrAuth lists all identities by username or auth.
+		ListIdentitiesByUserNameOrAuth(ctx context.Context, pageSize, page, authStatus int, userName string) ([]Identity, int, error)
 
 		// CountIdentities counts the number of identities in the store.
 		CountIdentities(ctx context.Context) (int64, error)
@@ -90,6 +92,7 @@ type (
 		// This should only be used internally. Please be aware that this method uses HydrateIdentityAssociations
 		// internally, which must not be executed as part of a transaction.
 		GetIdentityConfidential(context.Context, uuid.UUID) (*Identity, error)
+		//GetIdentityByPhone(context.Context, phone string) (*Identity, error)
 
 		// ListVerifiableAddresses lists all tracked verifiable addresses, regardless of whether they are already verified
 		// or not.
