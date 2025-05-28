@@ -891,18 +891,17 @@ func (p *IdentityPersister) ListIdentitiesByUserNameOrAuth(ctx context.Context, 
 				query += " WHERE identities.metadata_public NOT LIKE '%auth_at%'"
 			}
 			if authStatus == 2 {
-				if query != "" {
-					query += " AND "
-				}
 				query += " WHERE POSITION('auth_at' IN identities.metadata_public)>0"
 			}
 		}
 		if userName != "" {
 			if query != "" {
-				query += " AND "
+				query += fmt.Sprintf(" AND POSITION('%s' IN identities.traits)>0", userName)
+			} else {
+				query += fmt.Sprintf(" WHERE POSITION('%s' IN identities.traits)>0", userName)
 			}
 			//query += " WHERE POSITION('?' IN identities.traits)>0"
-			query += fmt.Sprintf(" WHERE POSITION('%s' IN identities.traits)>0", userName)
+			//query += fmt.Sprintf(" WHERE POSITION('%s' IN identities.traits)>0", userName)
 		}
 		limit := "ORDER BY identities.updated_at DESC LIMIT ? OFFSET ?"
 		args = append(args, pageSize, pageSize*(page-1))
