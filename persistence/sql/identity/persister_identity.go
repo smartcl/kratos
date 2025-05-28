@@ -889,28 +889,31 @@ func (p *IdentityPersister) ListIdentitiesByUserNameOrAuth(ctx context.Context, 
 		if authStatus != 0 {
 			if authStatus == 1 {
 				query += " WHERE identities.metadata_public NOT LIKE '%auth_at%'"
-				args = append(args, "auth_at")
-				queryOnlyArgs = append(queryOnlyArgs, "auth_at")
 			}
 			if authStatus == 2 {
 				if query != "" {
 					query += " AND "
 				}
-				query += " WHERE POSITION('?' IN identities.traits)>0"
-				args = append(args, userName)
-				queryOnlyArgs = append(queryOnlyArgs, userName)
+				query += " WHERE POSITION('auth_at' IN identities.metadata_public)>0"
 			}
+		}
+		if userName != "" {
+			if query != "" {
+				query += " AND "
+			}
+			//query += " WHERE POSITION('?' IN identities.traits)>0"
+			query += fmt.Sprintf(" WHERE POSITION('%s' IN identities.traits)>0", userName)
 		}
 		limit := "ORDER BY identities.updated_at DESC LIMIT ? OFFSET ?"
 		args = append(args, pageSize, pageSize*(page-1))
 
 		sqlStr := fmt.Sprintf(`SELECT * FROM identities %s %s`, query, limit)
-		fmt.Printf("sqlStr: %s\n", sqlStr)
+		fmt.Println("------------------\nsqlStr: ", sqlStr, args)
 		if err := con.RawQuery(sqlStr, args...).All(&list); err != nil {
 			return sqlcon.HandleError(err)
 		}
 		queryOnlyStr := fmt.Sprintf(`SELECT * FROM identities %s`, query)
-		fmt.Printf("queryOnlyStr: %s\n", queryOnlyStr)
+		fmt.Println("queryOnlyStr: ", queryOnlyStr, queryOnlyArgs)
 		var err error
 		count, err = con.RawQuery(queryOnlyStr, queryOnlyArgs...).Count(&identity.Identity{})
 		if err != nil {
