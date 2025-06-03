@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/ory/kratos/selfmodule/auth_phone"
+	"github.com/ory/kratos/selfmodule/cv"
 	"io"
 	"net/http"
 	"strings"
@@ -58,6 +59,7 @@ type (
 		x.CSRFProvider
 		cipher.Provider
 		hash.HashProvider
+		x.LoggingProvider
 	}
 	HandlerProvider interface {
 		IdentityHandler() *Handler
@@ -503,15 +505,67 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
 		return
 	}
+	// 获取traits
 	traits := make(map[string]string)
-	err := json.Unmarshal(cr.Traits, &traits)
+	traitsStr, err := cr.Traits.MarshalJSON()
 	if err != nil {
 		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
 		return
 	}
-	phone := traits["phone"]
+	err = json.Unmarshal(traitsStr, &traits)
+	if err != nil {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
+		return
+	}
+	phone := traits[cv.Phone]
+	userName := traits[cv.UserName]
+	// @todo 检查phone和userName是否已经存在
+	count, _ := h.r.IdentityPool().CountIdentitiesByUserNameOrPhone(r.Context(), userName, phone)
+	if count > 0 {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError("phone or user_name already exists")))
+		return
+	}
+
+	// 检查手机验证码是否正确
 	phoneCode := cr.PhoneCode
+	if phoneCode == "" {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError("phone code is empty")))
+		return
+	}
+	h.r.Logger().Infof("手机号：%s, 验证码：%s", phone, phoneCode)
 	err = auth_phone.AuthPhoneGlobal.VerifyAuthCode(phone, phoneCode)
+	if err != nil {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
+		return
+	}
+
+	//vp := &core.VerifiablePresentation{}
+	metadataStr, err := cr.MetadataPublic.MarshalJSON()
+	if err != nil {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
+		return
+	}
+	metadata := make(map[string]interface{})
+	err = json.Unmarshal(metadataStr, &metadata)
+	if err != nil {
+		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
+		return
+	}
+	// 验证字段
+	metadata[cv.Type] = cv.UserTypeEnterprise
+	metadata[cv.MetadataDisable] = false
+	delete(metadata, cv.MetadataAuthType)
+	metadata[cv.AuthStatus] = cv.MetadataAuthStatusNotAuth
+	delete(metadata, cv.MetadataAuthTime)
+	delete(metadata, cv.MetadataExpiresAt)
+	delete(metadata, cv.MetadataEnterprise)
+	delete(metadata, cv.MetadataEnterpriseId)
+	delete(metadata, cv.MetadataLegalPerson)
+	delete(metadata, cv.MetadataAuthInfo)
+	delete(metadata, cv.MetadataDid)
+	delete(metadata, cv.MetadataVp)
+	metadataStr, _ = json.Marshal(metadata)
+	err = cr.MetadataPublic.UnmarshalJSON(metadataStr)
 	if err != nil {
 		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
 		return

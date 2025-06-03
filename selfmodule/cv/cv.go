@@ -23,6 +23,23 @@ const (
 	Phone      = "phone"
 	AuthStatus = "auth_status"
 	Type       = "type"
+
+	MetadataType         = "type"
+	MetadataDisable      = "disable"
+	MetadataAuthType     = "auth_type"
+	MetadataAuthStatus   = "auth_status"
+	MetadataAuthTime     = "auth_time"
+	MetadataExpiresAt    = "expires_at"
+	MetadataEnterprise   = "enterprise"
+	MetadataEnterpriseId = "enterprise_id"
+	MetadataLegalPerson  = "legal_person"
+	MetadataAuthInfo     = "auth_info"
+	MetadataDid          = "did"
+	MetadataVp           = "vp"
+
+	UserTypeEnterprise        = 1
+	MetadataAuthStatusNotAuth = 1
+	MetadataAuthStatusAuth    = 2
 )
 
 func init() {

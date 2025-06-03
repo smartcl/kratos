@@ -542,6 +542,20 @@ func (p *IdentityPersister) CountIdentities(ctx context.Context) (n int64, err e
 	return int64(count), nil
 }
 
+func (p *IdentityPersister) CountIdentitiesByUserNameOrPhone(ctx context.Context, username, phone string) (n int64, err error) {
+	ctx, span := p.r.Tracer(ctx).Tracer().Start(ctx, "persistence.sql.CountIdentitiesByUserNameOrPhone",
+		trace.WithAttributes(
+			attribute.Stringer("network.id", p.NetworkID(ctx))))
+	defer otelx.End(span, &err)
+
+	count, err := p.c.WithContext(ctx).Where("POSITION('?' IN identities.traits)>0 OR POSITION('?' IN identities.traits)>0", username, phone).Count(new(identity.Identity))
+	if err != nil {
+		return 0, sqlcon.HandleError(err)
+	}
+	span.SetAttributes(attribute.Int("num_identities", count))
+	return int64(count), nil
+}
+
 func (p *IdentityPersister) CreateIdentity(ctx context.Context, ident *identity.Identity) (err error) {
 	ctx, span := p.r.Tracer(ctx).Tracer().Start(ctx, "persistence.sql.CreateIdentity",
 		trace.WithAttributes(
@@ -888,10 +902,10 @@ func (p *IdentityPersister) ListIdentitiesByUserNameOrAuth(ctx context.Context, 
 		}
 		if authStatus != 0 {
 			if authStatus == 1 {
-				query += " WHERE identities.metadata_public NOT LIKE '%auth_at%'"
+				query += " WHERE identities.metadata_public NOT LIKE '%auth_time%'"
 			}
 			if authStatus == 2 {
-				query += " WHERE POSITION('auth_at' IN identities.metadata_public)>0"
+				query += " WHERE POSITION('auth_time' IN identities.metadata_public)>0"
 			}
 		}
 		if userName != "" {

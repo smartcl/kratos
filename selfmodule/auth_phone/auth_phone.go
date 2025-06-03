@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ory/kratos/selfmodule/memorystore"
 	"math/rand"
+	"time"
 )
 
 var AuthPhoneGlobal *AuthPhone
@@ -14,7 +15,7 @@ type AuthPhone struct {
 
 func NewAuthPhone() {
 	AuthPhoneGlobal = &AuthPhone{
-		store: memorystore.NewSafeMap(120, 60),
+		store: memorystore.NewSafeMap(120*time.Second, 60*time.Second),
 	}
 }
 

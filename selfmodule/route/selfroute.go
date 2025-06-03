@@ -25,6 +25,7 @@ type (
 		x.CSRFProvider
 		cipher.Provider
 		hash.HashProvider
+		x.LoggingProvider
 	}
 	Handler struct {
 		r  handlerDependencies

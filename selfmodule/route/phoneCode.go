@@ -51,11 +51,13 @@ func (h *Handler) PhoneCode(w http.ResponseWriter, r *http.Request, _ httprouter
 		h.r.Writer().WriteError(w, r, errors.New("验证码错误"))
 		return
 	}
-	_, err = auth_phone.AuthPhoneGlobal.GenerateAuthCode(req.Phone)
+	code, err := auth_phone.AuthPhoneGlobal.GenerateAuthCode(req.Phone)
 	if err != nil {
 		h.r.Writer().WriteError(w, r, err)
 		return
 	}
+	h.r.Logger().Infof("验证码：%s, 手机号：%s", code, req.Phone)
 	h.r.Writer().Write(w, r, "发送成功")
+
 	return
 }

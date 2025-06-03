@@ -41,6 +41,9 @@ type (
 		// connectivity is broken.
 		GetIdentity(context.Context, uuid.UUID, sqlxx.Expandables) (*Identity, error)
 
+		// CountIdentitiesByUserNameOrPhone ..
+		CountIdentitiesByUserNameOrPhone(context.Context, string, string) (int64, error)
+
 		// FindVerifiableAddressByValue returns a matching address or sql.ErrNoRows if no address could be found.
 		FindVerifiableAddressByValue(ctx context.Context, via string, address string) (*VerifiableAddress, error)
 

@@ -43,15 +43,15 @@ func (m *SafeMap) Get(key string) (string, bool) {
 
 	entry, exists := m.items[key]
 	if !exists {
-		return "", false
+		return "", true
 	}
 	if time.Now().After(entry.ExpiryTime) {
-		return "", false
+		return "", true
 	}
 	if time.Now().After(entry.AllowOverrideTime) {
-		return entry.Value, false
+		return entry.Value, true
 	}
-	return entry.Value, true
+	return entry.Value, false
 }
 
 // Set 设置值（带覆盖时间检查）
@@ -64,16 +64,6 @@ func (m *SafeMap) Set(key string, value string) bool {
 		Value:             value,
 		ExpiryTime:        now.Add(m.ttl),
 		AllowOverrideTime: now.Add(m.overrideWindow),
-	}
-
-	// 检查是否允许覆盖
-	if existing, exists := m.items[key]; exists {
-		if now.After(existing.AllowOverrideTime) {
-			m.items[key] = newEntry
-			return true // 超过允许覆盖时间，允许覆盖
-		} else {
-			return false // 未超过允许覆盖时间，不允许覆盖
-		}
 	}
 
 	m.items[key] = newEntry
