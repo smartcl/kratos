@@ -40,6 +40,8 @@ const (
 	UserTypeEnterprise        = 1
 	MetadataAuthStatusNotAuth = 1
 	MetadataAuthStatusAuth    = 2
+
+	ResetPwd = "resetPwd"
 )
 
 func init() {

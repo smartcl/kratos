@@ -40,6 +40,7 @@ type (
 		// GetIdentity returns an identity by its id. Will return an error if the identity does not exist or backend
 		// connectivity is broken.
 		GetIdentity(context.Context, uuid.UUID, sqlxx.Expandables) (*Identity, error)
+		GetSessionByTokenForUpdate(context.Context, string) (*Identity, error)
 
 		// CountIdentitiesByUserNameOrPhone ..
 		CountIdentitiesByUserNameOrPhone(context.Context, string, string) (int64, error)
@@ -95,7 +96,7 @@ type (
 		// This should only be used internally. Please be aware that this method uses HydrateIdentityAssociations
 		// internally, which must not be executed as part of a transaction.
 		GetIdentityConfidential(context.Context, uuid.UUID) (*Identity, error)
-		//GetIdentityByPhone(context.Context, phone string) (*Identity, error)
+		GetIdentityByPhone(context.Context, string) (*Identity, error)
 
 		// ListVerifiableAddresses lists all tracked verifiable addresses, regardless of whether they are already verified
 		// or not.

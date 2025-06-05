@@ -60,6 +60,7 @@ type (
 		cipher.Provider
 		hash.HashProvider
 		x.LoggingProvider
+		x.CookieProvider
 	}
 	HandlerProvider interface {
 		IdentityHandler() *Handler
@@ -505,20 +506,12 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
 		return
 	}
-	// 获取traits
-	traits := make(map[string]string)
-	traitsStr, err := cr.Traits.MarshalJSON()
+	// 获取userName和phone
+	userName, phone, err := h.getUserNameAndPhoneFromTraits(cr.Traits)
 	if err != nil {
 		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
 		return
 	}
-	err = json.Unmarshal(traitsStr, &traits)
-	if err != nil {
-		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
-		return
-	}
-	phone := traits[cv.Phone]
-	userName := traits[cv.UserName]
 	// @todo 检查phone和userName是否已经存在
 	count, _ := h.r.IdentityPool().CountIdentitiesByUserNameOrPhone(r.Context(), userName, phone)
 	if count > 0 {
@@ -540,13 +533,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 	}
 
 	//vp := &core.VerifiablePresentation{}
-	metadataStr, err := cr.MetadataPublic.MarshalJSON()
-	if err != nil {
-		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
-		return
-	}
-	metadata := make(map[string]interface{})
-	err = json.Unmarshal(metadataStr, &metadata)
+	metadata, err := h.getPublicMetadataMap(cr.MetadataPublic)
 	if err != nil {
 		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
 		return
@@ -564,7 +551,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 	delete(metadata, cv.MetadataAuthInfo)
 	delete(metadata, cv.MetadataDid)
 	delete(metadata, cv.MetadataVp)
-	metadataStr, _ = json.Marshal(metadata)
+	metadataStr, _ := json.Marshal(metadata)
 	err = cr.MetadataPublic.UnmarshalJSON(metadataStr)
 	if err != nil {
 		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
@@ -594,6 +581,32 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 		).String(),
 		WithCredentialsMetadataAndAdminMetadataInJSON(*i),
 	)
+}
+
+func (h *Handler) getUserNameAndPhoneFromTraits(traits json.RawMessage) (userName string, phone string, err error) {
+	traitsMap := make(map[string]string)
+	traitsStr, err := traits.MarshalJSON()
+	if err != nil {
+		return "", "", err
+	}
+	err = json.Unmarshal(traitsStr, &traitsMap)
+	if err != nil {
+		return "", "", err
+	}
+	return traitsMap[cv.UserName], traitsMap[cv.Phone], nil
+}
+
+func (h *Handler) getPublicMetadataMap(metadata json.RawMessage) (publicMetadataMap map[string]interface{}, err error) {
+	publicMetadataMap = make(map[string]interface{})
+	publicMetadataMapStr, err := metadata.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(publicMetadataMapStr, &publicMetadataMap)
+	if err != nil {
+		return nil, err
+	}
+	return publicMetadataMap, nil
 }
 
 func (h *Handler) identityFromCreateIdentityBody(ctx context.Context, cr *CreateIdentityBody) (*Identity, error) {
@@ -770,7 +783,8 @@ type UpdateIdentityBody struct {
 	// State is the identity's state.
 	//
 	// required: true
-	State State `json:"state"`
+	State     State  `json:"state"`
+	PhoneCode string `json:"phone_code"`
 }
 
 // swagger:route PUT /admin/identities/{id} identity updateIdentity
@@ -798,7 +812,10 @@ type UpdateIdentityBody struct {
 //	  409: errorGeneric
 //	  default: errorGeneric
 func (h *Handler) update(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	var ur UpdateIdentityBody
+	var (
+		ur       UpdateIdentityBody
+		identity *Identity
+	)
 	if err := h.dx.Decode(r, &ur,
 		decoderx.HTTPJSONDecoder()); err != nil {
 		h.r.Writer().WriteError(w, r, err)
@@ -806,44 +823,92 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, ps httprouter.P
 	}
 
 	idSrc := ps.ByName("id")
-	if idSrc == "resetPwd" {
-		h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithReasonf("The identity ID is invalid.")))
-		return
-	}
-	//identity, err := h.r.PrivilegedIdentityPool().GetIdentityConfidential()
-	id := x.ParseUUID(ps.ByName("id"))
-	identity, err := h.r.PrivilegedIdentityPool().GetIdentityConfidential(r.Context(), id)
-	if err != nil {
-		h.r.Writer().WriteError(w, r, err)
-		return
-	}
-
-	if ur.SchemaID != "" {
-		identity.SchemaID = ur.SchemaID
-	}
-
-	if ur.State != "" && identity.State != ur.State {
-		if err := ur.State.IsValid(); err != nil {
-			h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithReasonf("%s", err).WithWrap(err)))
+	if idSrc == cv.ResetPwd {
+		_, phone, err := h.getUserNameAndPhoneFromTraits(ur.Traits)
+		if err != nil {
+			h.r.Writer().WriteError(w, r, err)
+			return
+		}
+		// 检查手机验证码是否正确
+		phoneCode := ur.PhoneCode
+		if phoneCode == "" {
+			h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError("phone code is empty")))
+			return
+		}
+		h.r.Logger().Infof("手机号：%s, 验证码：%s", phone, phoneCode)
+		err = auth_phone.AuthPhoneGlobal.VerifyAuthCode(phone, phoneCode)
+		if err != nil {
+			h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithError(err.Error())))
+			return
+		}
+		identity, err = h.r.PrivilegedIdentityPool().GetIdentityByPhone(r.Context(), phone)
+		if err != nil {
+			h.r.Writer().WriteError(w, r, err)
+			return
+		}
+	} else {
+		cookie, err := h.r.CookieManager(r.Context()).Get(r, h.r.Config().SessionName(r.Context()))
+		if err != nil {
+			h.r.Writer().WriteError(w, r, err)
+			return
+		}
+		token, ok := cookie.Values["session_token"].(string)
+		if !ok {
+			h.r.Writer().WriteError(w, r, errors.New("请登录"))
+			return
+		}
+		h.r.Logger().Infof("%s", token)
+		identity, err = h.r.IdentityPool().GetSessionByTokenForUpdate(r.Context(), token)
+		if err != nil {
+			h.r.Writer().WriteError(w, r, err)
+			return
+		}
+		if identity == nil {
+			h.r.Writer().WriteError(w, r, errors.New("请登录"))
 			return
 		}
 
-		stateChangedAt := sqlxx.NullTime(time.Now())
-
-		identity.State = ur.State
-		identity.StateChangedAt = &stateChangedAt
-	}
-
-	// 不让改
-	//identity.Traits = []byte(ur.Traits)
-	identity.MetadataPublic = []byte(ur.MetadataPublic)
-	identity.MetadataAdmin = []byte(ur.MetadataAdmin)
-
-	// Although this is PUT and not PATCH, if the Credentials are not supplied keep the old one
-	if ur.Credentials != nil {
-		if err := h.importCredentials(r.Context(), identity, ur.Credentials); err != nil {
-			h.r.Writer().WriteError(w, r, err)
+		if identity.ID.String() != idSrc {
+			h.r.Writer().WriteError(w, r, errors.New("不允许修改其他用户"))
 			return
+		}
+	}
+	//identity, err := h.r.PrivilegedIdentityPool().GetIdentityConfidential()
+	//id := x.ParseUUID(ps.ByName("id"))
+	//identity, err := h.r.PrivilegedIdentityPool().GetIdentityConfidential(r.Context(), id)
+	//if err != nil {
+	//	h.r.Writer().WriteError(w, r, err)
+	//	return
+	//}
+	if idSrc != cv.ResetPwd {
+
+		if ur.SchemaID != "" {
+			identity.SchemaID = ur.SchemaID
+		}
+
+		if ur.State != "" && identity.State != ur.State {
+			if err := ur.State.IsValid(); err != nil {
+				h.r.Writer().WriteError(w, r, errors.WithStack(herodot.ErrBadRequest.WithReasonf("%s", err).WithWrap(err)))
+				return
+			}
+
+			stateChangedAt := sqlxx.NullTime(time.Now())
+
+			identity.State = ur.State
+			identity.StateChangedAt = &stateChangedAt
+		}
+
+		// 不让改
+		//identity.Traits = []byte(ur.Traits)
+		identity.MetadataPublic = []byte(ur.MetadataPublic)
+		//identity.MetadataAdmin = []byte(ur.MetadataAdmin)
+	} else {
+		// Although this is PUT and not PATCH, if the Credentials are not supplied keep the old one
+		if ur.Credentials != nil {
+			if err := h.importCredentials(r.Context(), identity, ur.Credentials); err != nil {
+				h.r.Writer().WriteError(w, r, err)
+				return
+			}
 		}
 	}
 

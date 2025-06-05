@@ -7,7 +7,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"github.com/ory/kratos/session"
 	"sort"
 	"strings"
 	"sync"
@@ -1252,6 +1254,19 @@ func (p *IdentityPersister) GetIdentity(ctx context.Context, id uuid.UUID, expan
 	return &i, nil
 }
 
+func (p *IdentityPersister) GetSessionByTokenForUpdate(ctx context.Context, token string) (_ *identity.Identity, err error) {
+	nid := p.NetworkID(ctx)
+	con := p.GetConnection(ctx)
+	var s session.Session
+	if err := con.Where("token = ? AND nid = ?", token, nid).First(&s); err != nil {
+		return nil, sqlcon.HandleError(err)
+	}
+	sStr, _ := json.Marshal(s)
+	p.r.Logger().Infof("Found session %s", sStr)
+	//p.PrivilegedPool.GetIdentity(ctx, s.IdentityID, identityExpand)
+	return p.GetIdentity(ctx, s.IdentityID, identity.ExpandEverything)
+}
+
 func (p *IdentityPersister) GetIdentityConfidential(ctx context.Context, id uuid.UUID) (res *identity.Identity, err error) {
 	ctx, span := p.r.Tracer(ctx).Tracer().Start(ctx, "persistence.sql.GetIdentityConfidential")
 	defer otelx.End(span, &err)
@@ -1259,14 +1274,15 @@ func (p *IdentityPersister) GetIdentityConfidential(ctx context.Context, id uuid
 	return p.GetIdentity(ctx, id, identity.ExpandEverything)
 }
 
-func (p *IdentityPersister) GetIdentityByPhone(ctx context.Context, phone string) (res *identity.Identity, err error) {
+func (p *IdentityPersister) GetIdentityByPhone(ctx context.Context, phone string) (_ *identity.Identity, err error) {
 	ctx, span := p.r.Tracer(ctx).Tracer().Start(ctx, "persistence.sql.GetIdentityByPhone")
 	defer otelx.End(span, &err)
 
-	//p.GetConnection(ctx).Where("traits.phone = ? AND nid = ?", id, p.NetworkID(ctx)).First(&i); err != nil {
-	//	return nil, sqlcon.HandleError(err)
-	//}
-	return nil, nil
+	var res identity.Identity
+	if err := p.GetConnection(ctx).Where("POSITION(? IN traits)>0", phone).First(&res); err != nil {
+		return nil, sqlcon.HandleError(err)
+	}
+	return &res, nil
 }
 func (p *IdentityPersister) FindVerifiableAddressByValue(ctx context.Context, via string, value string) (_ *identity.VerifiableAddress, err error) {
 	ctx, span := p.r.Tracer(ctx).Tracer().Start(ctx, "persistence.sql.FindVerifiableAddressByValue",
